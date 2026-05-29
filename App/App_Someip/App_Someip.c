@@ -1,5 +1,4 @@
 #include "App_Someip.h"
-#include "App_AebService/App_AebService.h"
 #include "App_DriveService/App_DriveService.h"
 #include "App_Eth/App_Eth.h"
 #include "App_InfoService/App_InfoService.h"
@@ -17,18 +16,17 @@
 #define APP_SOMEIP_CLIENT_ID        (0x0002u)
 #define APP_SOMEIP_PORT             (30500u)
 
-#define APP_SOMEIP_SERVICE_COUNT    (5)
+#define APP_SOMEIP_RX_ROUTE_COUNT   (3)
 
 #define APP_SOMEIP_DRIVE_SERVICE    (0x0001u)
 #define APP_SOMEIP_SENSOR_SERVICE   (0x0002u)
-#define APP_SOMEIP_AEB_SERVICE      (0x0006u)
 #define APP_SOMEIP_INFO_SERVICE     (0x0007u)
 #define APP_SOMEIP_VEHICLE_SERVICE  (0x0008u)
 
 static QueueHandle_t g_tx_queue;
 static TaskHandle_t g_someip_task_handle;
 static BaseType_t g_someip_ready = pdFALSE;
-static AppSomeipRoute g_app_routes[APP_SOMEIP_SERVICE_COUNT];
+static AppSomeipRoute g_app_routes[APP_SOMEIP_RX_ROUTE_COUNT];
 
 static BaseType_t AppSomeip_Init(void);
 static void AppSomeip_Task(void* arg);
@@ -78,13 +76,6 @@ static BaseType_t AppSomeip_Init(void) {
                 }
             },
             {
-                .service_id = APP_SOMEIP_AEB_SERVICE,
-                .endpoint = {
-                    .ip = "192.168.10.2",
-                    .port = APP_SOMEIP_PORT
-                }
-            },
-            {
                 .service_id = APP_SOMEIP_INFO_SERVICE,
                 .endpoint = {
                     .ip = "192.168.10.2",
@@ -104,18 +95,11 @@ static BaseType_t AppSomeip_Init(void) {
     g_app_routes[0].service_id = APP_SOMEIP_DRIVE_SERVICE;
     g_app_routes[0].get_rx_queue = AppDriveService_GetSomeipRxQueue;
 
-    g_app_routes[1].service_id = APP_SOMEIP_SENSOR_SERVICE;
-    /* Sensor service events feed AEB; AppSensorService is TX-only. */
-    g_app_routes[1].get_rx_queue = AppAebService_GetSomeipRxQueue;
+    g_app_routes[1].service_id = APP_SOMEIP_INFO_SERVICE;
+    g_app_routes[1].get_rx_queue = AppInfoService_GetSomeipRxQueue;
 
-    g_app_routes[2].service_id = APP_SOMEIP_AEB_SERVICE;
-    g_app_routes[2].get_rx_queue = AppAebService_GetSomeipRxQueue;
-
-    g_app_routes[3].service_id = APP_SOMEIP_INFO_SERVICE;
-    g_app_routes[3].get_rx_queue = AppInfoService_GetSomeipRxQueue;
-
-    g_app_routes[4].service_id = APP_SOMEIP_VEHICLE_SERVICE;
-    g_app_routes[4].get_rx_queue = AppVehicleService_GetSomeipRxQueue;    
+    g_app_routes[2].service_id = APP_SOMEIP_VEHICLE_SERVICE;
+    g_app_routes[2].get_rx_queue = AppVehicleService_GetSomeipRxQueue;
 
     if(AppEth_IsReady() != pdPASS) return pdFAIL;
 
@@ -218,7 +202,7 @@ static void AppSomeip_ProcessTx(void) {
 }
 
 static QueueHandle_t AppSomeip_FindAppQueue(uint16_t service_id) {
-    for(int i = 0; i < APP_SOMEIP_SERVICE_COUNT; i++) {
+    for(int i = 0; i < APP_SOMEIP_RX_ROUTE_COUNT; i++) {
         if(g_app_routes[i].service_id == service_id) {
             if(g_app_routes[i].get_rx_queue == NULL) return NULL;
             return g_app_routes[i].get_rx_queue();

@@ -50,7 +50,6 @@
 #include "App_Someip/App_Someip.h"
 #include "App_InfoService/App_InfoService.h"
 #include "App_Can/App_Can.h"
-#include "App_AebService/App_AebService.h"
 #include "App_DriveService/App_DriveService.h"
 #include "App_SensorService/App_SensorService.h"
 #include "App_DoIP/App_DoIP.h"
@@ -139,7 +138,6 @@ void core0_main(void)
     /*
      * 기존 Application Services 시작
      */
-    app_assert_pass(AppAebService_Start());
     app_assert_pass(AppDriveService_Start());
 
     /*

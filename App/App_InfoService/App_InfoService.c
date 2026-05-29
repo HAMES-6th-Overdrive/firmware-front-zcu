@@ -1,6 +1,5 @@
 #include "App_InfoService.h"
 
-#include "App_AebService/App_AebService.h"
 #include "App_Can/App_Can.h"
 #include "App_Someip/App_Someip.h"
 #include "someip/light_someip.h"
@@ -15,7 +14,6 @@
 #define APP_INFOSERVICE_SENSOR_VERSION_METHOD   (0x1001u)
 #define APP_INFOSERVICE_DRIVE_VERSION_METHOD    (0x1002u)
 #define APP_INFOSERVICE_FRONTZCU_VERSION_METHOD (0x1003u)
-#define APP_INFOSERVICE_AEB_VERSION_METHOD      (0x1004u)
 #define APP_INFOSERVICE_VERSION_PAYLOAD_LENGTH  (8u)
 
 #define APP_INFOSERVICE_CAN_ID_VERSION_REQUEST  (0x700u)
@@ -114,10 +112,6 @@ static void AppInfoService_SendVersionResponse(const AppSomeipRxMsg *request_msg
     if (request_msg->packet.method_id == APP_INFOSERVICE_FRONTZCU_VERSION_METHOD)
     {
         AppInfoService_CopyVersionString(version_payload, App_GetFrontZcuVersion());
-    }
-    else if (request_msg->packet.method_id == APP_INFOSERVICE_AEB_VERSION_METHOD)
-    {
-        AppInfoService_CopyVersionString(version_payload, AppAebService_GetVersion());
     }
     else if (request_msg->packet.method_id == APP_INFOSERVICE_DRIVE_VERSION_METHOD)
     {

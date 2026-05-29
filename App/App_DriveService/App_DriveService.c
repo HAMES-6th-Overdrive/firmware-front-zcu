@@ -1,6 +1,5 @@
 #include "App_DriveService.h"
 
-#include "App_AebService/App_AebService.h"
 #include "App_Can/App_Can.h"
 #include "App_Someip/App_Someip.h"
 #include "task.h"
@@ -21,6 +20,7 @@
 #define APP_DRIVESERVICE_GEAR_STATE_D               (0x01u)
 #define APP_DRIVESERVICE_DRIVE_CMD_STOP_VALUE       (127u)
 #define APP_DRIVESERVICE_STEERING_CMD_CENTER_VALUE  (127u)
+#define APP_DRIVESERVICE_STOP_CMD_GO_VALUE          (0u)
 
 typedef uint8_t AppDriveServiceDriveCmd;
 typedef uint8_t AppDriveServiceSteeringCmd;
@@ -44,8 +44,7 @@ static void AppDriveService_ProcessSomeip(void);
 static void AppDriveService_HandleSomeipMessage(const AppSomeipRxMsg *rx_msg);
 static BaseType_t AppDriveService_SendVehicleState(AppDriveServiceGearState gear_state);
 static BaseType_t AppDriveService_SendControlCmd(AppDriveServiceDriveCmd drive_cmd,
-                                                 AppDriveServiceSteeringCmd steering_cmd,
-                                                 AppAebServiceStopCmd stop_cmd);
+                                                 AppDriveServiceSteeringCmd steering_cmd);
 
 BaseType_t AppDriveService_Start(void)
 {
@@ -118,7 +117,6 @@ static BaseType_t AppDriveService_Init(void)
 static void AppDriveService_Task(void *arg)
 {
     AppDriveServiceCommand command;
-    AppAebServiceStopCmd stop_cmd;
     TickType_t last_tx_tick;
     TickType_t now;
 
@@ -137,11 +135,9 @@ static void AppDriveService_Task(void *arg)
             last_tx_tick = now;
 
             AppDriveService_GetCommand(&command);
-            stop_cmd = AppAebService_GetStopCmd();
 
             (void)AppDriveService_SendControlCmd(command.drive_cmd,
-                                                 command.steering_cmd,
-                                                 stop_cmd);
+                                                 command.steering_cmd);
         }
 
         vTaskDelay(pdMS_TO_TICKS(APP_DRIVESERVICE_TASK_PERIOD_MS));
@@ -181,14 +177,13 @@ static void AppDriveService_HandleSomeipMessage(const AppSomeipRxMsg *rx_msg)
 }
 
 static BaseType_t AppDriveService_SendControlCmd(AppDriveServiceDriveCmd drive_cmd,
-                                                 AppDriveServiceSteeringCmd steering_cmd,
-                                                 AppAebServiceStopCmd stop_cmd)
+                                                 AppDriveServiceSteeringCmd steering_cmd)
 {
     uint8_t payload[APP_DRIVESERVICE_CAN_DLC_CONTROL_CMD];
 
     payload[0] = drive_cmd;
     payload[1] = steering_cmd;
-    payload[2] = (uint8_t)stop_cmd;
+    payload[2] = APP_DRIVESERVICE_STOP_CMD_GO_VALUE;
 
     return AppCan_SendClassic(APP_DRIVESERVICE_CAN_ID_CONTROL_CMD,
                               payload,
