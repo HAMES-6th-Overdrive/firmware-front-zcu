@@ -50,15 +50,15 @@
  *   [1] BSC  = block sequence counter
  *   [2..] Data
  *
- * Sensor ECU 쪽 내부 OTA는 CAN FD 한 frame을 최대한 채워서 전송하므로,
- * ZCU는 HPC에게 maxBlockSize = 64를 알려준다.
+ * Sensor ECU 쪽 내부 OTA는 32-byte block 단위이므로,
+ * ZCU는 HPC에게 maxBlockSize = 34를 알려주는 것이 가장 단순하다.
  *
  * 그러면 HPC는:
- *   maxBlockSize - 2 = 62 bytes
+ *   maxBlockSize - 2 = 32 bytes
  * 단위로 bin을 보낸다.
  */
-#define APP_SENSOR_OTA_GATEWAY_UDS_DATA_SIZE          62U
-#define APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE     64U
+#define APP_SENSOR_OTA_GATEWAY_UDS_DATA_SIZE          32U
+#define APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE     34U
 #define APP_SENSOR_OTA_GATEWAY_UDS_RX_BUF_SIZE        256U
 #define APP_SENSOR_OTA_GATEWAY_UDS_TX_BUF_SIZE        256U
 
