@@ -51,8 +51,9 @@
  *  - vTaskDelay(1ms)를 사용하므로 이 함수는 FreeRTOS task context에서 호출되어야 한다.
  *  - 너무 짧게 잡으면 Sensor ECU flash erase/write 응답 대기 중 timeout이 날 수 있다.
  */
+#define APP_SENSOR_OTA_GATEWAY_WAIT_IDLE_TIMEOUT_MS       1000U
 #define APP_SENSOR_OTA_GATEWAY_WAIT_BLOCK_TIMEOUT_MS      5000U
-#define APP_SENSOR_OTA_GATEWAY_WAIT_NEXT_TIMEOUT_MS       5000U 
+#define APP_SENSOR_OTA_GATEWAY_WAIT_NEXT_TIMEOUT_MS       5000U
 #define APP_SENSOR_OTA_GATEWAY_WAIT_DONE_TIMEOUT_MS       60000U
 
 #define APP_SENSOR_OTA_GATEWAY_UDS_WORKER_STACK_SIZE      (configMINIMAL_STACK_SIZE + 128U)
@@ -109,6 +110,12 @@ volatile uint32 g_sensorOtaUdsExpectedCrc32 = 0U;
 
 volatile uint32 g_sensorOtaUdsLastBlockIndex = 0U;
 volatile uint32 g_sensorOtaUdsLastBlockLength = 0U;
+volatile uint32 g_sensorOtaUdsRequestedBlockLength = 0U;
+volatile uint32 g_sensorOtaUdsExpectedBlockLength = 0U;
+volatile uint32 g_sensorOtaUdsAdvertisedMaxBlockSize = 0U;
+volatile uint32 g_sensorOtaUdsLengthMismatchCount = 0U;
+volatile uint32 g_sensorOtaUdsCancelBeforeStartCount = 0U;
+volatile uint32 g_sensorOtaUdsWaitIdleTimeoutCount = 0U;
 
 volatile uint32 g_sensorOtaUdsStartNoCrcOkCount = 0U;
 volatile uint32 g_sensorOtaUdsStartNoCrcFailCount = 0U;
@@ -148,6 +155,7 @@ static uint16 handleEcuReset(uint8 *rx, uint16 rxLen, uint8 *tx);
 
 static uint32 readU32Be(const uint8 *p);
 
+static boolean waitUntilReceiverIdle(uint32 timeoutMs);
 static boolean waitUntilWaitingBlock(uint32 timeoutMs);
 static boolean waitUntilBlockConsumedOrFinalCrc(uint32 blockIndex, uint32 timeoutMs);
 static boolean waitUntilDoneOrError(uint32 timeoutMs);
@@ -182,6 +190,12 @@ void AppSensorOtaGatewayUds_Init(void)
 
     g_sensorOtaUdsLastBlockIndex = 0U;
     g_sensorOtaUdsLastBlockLength = 0U;
+    g_sensorOtaUdsRequestedBlockLength = 0U;
+    g_sensorOtaUdsExpectedBlockLength = 0U;
+    g_sensorOtaUdsAdvertisedMaxBlockSize = 0U;
+    g_sensorOtaUdsLengthMismatchCount = 0U;
+    g_sensorOtaUdsCancelBeforeStartCount = 0U;
+    g_sensorOtaUdsWaitIdleTimeoutCount = 0U;
 
     g_sensorOtaUdsStartNoCrcOkCount = 0U;
     g_sensorOtaUdsStartNoCrcFailCount = 0U;
@@ -452,6 +466,9 @@ static uint16 handleRequestDownload(uint8 *rx, uint16 rxLen, uint8 *tx)
     uint8 sizeLen;
     uint8 i;
     uint32 firmwareSize;
+    uint8 requestedLength;
+    uint8 expectedLength;
+    uint16 advertisedMaxBlockSize;
     BaseType_t startResult;
 
     g_sensorOtaUdsRequestDownloadCount++;
@@ -512,6 +529,22 @@ static uint16 handleRequestDownload(uint8 *rx, uint16 rxLen, uint8 *tx)
                                     APP_SENSOR_OTA_GATEWAY_UDS_NRC_REQUEST_OUT_OF_RANGE);
     }
 
+    /*
+     * 이전 OTA 시도가 WAIT_BLOCK에 남아 있으면 아래 waitUntilWaitingBlock()이
+     * 새 0x34 처리 완료 전의 stale 상태를 보고 성공으로 오판할 수 있다.
+     * 새 download는 항상 기존 gateway/client 상태를 먼저 비우고 시작한다.
+     */
+    (void)AppOtaReceiver_Cancel(0U);
+    g_sensorOtaUdsCancelBeforeStartCount++;
+
+    if(waitUntilReceiverIdle(APP_SENSOR_OTA_GATEWAY_WAIT_IDLE_TIMEOUT_MS) == FALSE)
+    {
+        g_sensorOtaUdsWaitIdleTimeoutCount++;
+        return makeNegativeResponse(tx,
+                                    APP_SENSOR_OTA_GATEWAY_UDS_SID_REQUEST_DOWNLOAD,
+                                    APP_SENSOR_OTA_GATEWAY_UDS_NRC_CONDITIONS_NOT_CORRECT);
+    }
+
     resetDownloadState();
 
     g_downloadSize = firmwareSize;
@@ -553,18 +586,43 @@ static uint16 handleRequestDownload(uint8 *rx, uint16 rxLen, uint8 *tx)
                                     APP_SENSOR_OTA_GATEWAY_UDS_NRC_GENERAL_PROG_FAILURE);
     }
 
+    requestedLength = AppOtaReceiver_GetRequestedLength();
+    g_sensorOtaUdsRequestedBlockLength = requestedLength;
+
+    if(firmwareSize >= APP_SENSOR_OTA_GATEWAY_UDS_DATA_SIZE)
+    {
+        expectedLength = APP_SENSOR_OTA_GATEWAY_UDS_DATA_SIZE;
+    }
+    else
+    {
+        expectedLength = (uint8)firmwareSize;
+    }
+
+    g_sensorOtaUdsExpectedBlockLength = expectedLength;
+
+    if((requestedLength == 0U) ||
+       (requestedLength != expectedLength))
+    {
+        g_sensorOtaUdsLengthMismatchCount++;
+        return makeNegativeResponse(tx,
+                                    APP_SENSOR_OTA_GATEWAY_UDS_SID_REQUEST_DOWNLOAD,
+                                    APP_SENSOR_OTA_GATEWAY_UDS_NRC_GENERAL_PROG_FAILURE);
+    }
+
+    advertisedMaxBlockSize = APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE;
+    g_sensorOtaUdsAdvertisedMaxBlockSize = advertisedMaxBlockSize;
+
     /*
      * Positive response:
      *   0x74 0x20 maxBlockSizeHi maxBlockSizeLo
      *
-     * 여기서 maxBlockSize = 64로 응답한다.
-     * 그러면 HPC는 data payload를 64 - 2 = 62 bytes 단위로 보낸다.
+     * CAN FD 한 frame을 채우는 62-byte data path를 광고한다.
      */
     tx[0] = APP_SENSOR_OTA_GATEWAY_UDS_SID_REQUEST_DOWNLOAD +
             APP_SENSOR_OTA_GATEWAY_UDS_POS_RESPONSE_OFFSET;
     tx[1] = 0x20U;
-    tx[2] = (uint8)((APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE >> 8) & 0xFFU);
-    tx[3] = (uint8)(APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE & 0xFFU);
+    tx[2] = (uint8)((advertisedMaxBlockSize >> 8) & 0xFFU);
+    tx[3] = (uint8)(advertisedMaxBlockSize & 0xFFU);
 
     return 4U;
 }
@@ -624,6 +682,8 @@ static uint16 handleTransferData(uint8 *rx, uint16 rxLen, uint8 *tx)
 
     requestedBlockIndex = AppOtaReceiver_GetRequestedBlockIndex();
     requestedLength = AppOtaReceiver_GetRequestedLength();
+    g_sensorOtaUdsRequestedBlockLength = requestedLength;
+    g_sensorOtaUdsLastBlockLength = chunkLen;
 
     /*
      * 마지막 block은 62보다 작을 수 있다.
@@ -631,6 +691,7 @@ static uint16 handleTransferData(uint8 *rx, uint16 rxLen, uint8 *tx)
      */
     if(chunkLen != requestedLength)
     {
+        g_sensorOtaUdsLengthMismatchCount++;
         return makeNegativeResponse(tx,
                                     APP_SENSOR_OTA_GATEWAY_UDS_SID_TRANSFER_DATA,
                                     APP_SENSOR_OTA_GATEWAY_UDS_NRC_REQUEST_OUT_OF_RANGE);
@@ -848,6 +909,25 @@ static uint32 readU32Be(const uint8 *p)
            ((uint32)p[1] << 16) |
            ((uint32)p[2] << 8)  |
            ((uint32)p[3]);
+}
+
+
+static boolean waitUntilReceiverIdle(uint32 timeoutMs)
+{
+    uint32 elapsedMs = 0U;
+
+    while(elapsedMs < timeoutMs)
+    {
+        if(AppOtaReceiver_IsBusy() == FALSE)
+        {
+            return TRUE;
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1U));
+        elapsedMs++;
+    }
+
+    return FALSE;
 }
 
 
