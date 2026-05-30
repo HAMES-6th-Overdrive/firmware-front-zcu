@@ -61,6 +61,7 @@ IFX_EXTERN void IfxGet_Eth_Phy_Dp83825i_reset(void);
  * \return Status
  */
 IFX_EXTERN uint32 IfxGeth_Eth_Phy_Dp83825i_init(void);
+IFX_EXTERN uint32 IfxGeth_Eth_Phy_Dp83825i_recover(void);
 
 /**
  * \return Link status

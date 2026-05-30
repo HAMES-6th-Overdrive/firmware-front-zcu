@@ -2,13 +2,15 @@
 #include "App_DoIP.h"
 #include "App_SensorOtaGateway/App_SensorOtaGateway_Doip.h"
 #include "Ifx_Lwip.h"
+#include "IfxGeth_Phy_Dp83825i.h"
 
 #define APP_ETH_TASK_STACK_SIZE (4096u)
 #define APP_ETH_TASK_PRIORITY   (2u)
 #define APP_ETH_TASK_PERIOD_MS (1u)
-#define APP_ETH_POWER_ON_DELAY_MS (3000u)
+#define APP_ETH_POWER_ON_DELAY_MS (500u)
 #define APP_ETH_INIT_RETRY_MS (100u)
 #define APP_ETH_LINK_STABLE_MS (500u)
+#define APP_ETH_LINK_TIMEOUT_MS (5000u)
 
 static BaseType_t g_app_eth_ready = pdFALSE;
 static BaseType_t g_app_eth_initialized = pdFALSE;
@@ -73,12 +75,17 @@ BaseType_t AppEth_IsReady(void)
 static void AppEth_UpdateReadyState(void)
 {
     static BaseType_t link_timer_started = pdFALSE;
+    static BaseType_t link_wait_timer_started = pdFALSE;
     static TickType_t link_up_start_tick = 0u;
+    static TickType_t link_wait_start_tick = 0u;
     TickType_t now;
+
+    now = xTaskGetTickCount();
 
     if((g_Lwip.netif.flags & NETIF_FLAG_LINK_UP) != 0u)
     {
-        now = xTaskGetTickCount();
+        link_wait_timer_started = pdFALSE;
+        link_wait_start_tick = 0u;
 
         if(link_timer_started != pdTRUE)
         {
@@ -97,5 +104,16 @@ static void AppEth_UpdateReadyState(void)
         link_timer_started = pdFALSE;
         link_up_start_tick = 0u;
         g_app_eth_ready = pdFALSE;
+
+        if(link_wait_timer_started != pdTRUE)
+        {
+            link_wait_timer_started = pdTRUE;
+            link_wait_start_tick = now;
+        }
+        else if((TickType_t)(now - link_wait_start_tick) >= pdMS_TO_TICKS(APP_ETH_LINK_TIMEOUT_MS))
+        {
+            (void)IfxGeth_Eth_Phy_Dp83825i_recover();
+            link_wait_start_tick = now;
+        }
     }
 }
