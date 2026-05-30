@@ -68,7 +68,10 @@
 
 #define IFXGETH_PHY_DP83825I_MDIO_PHYSTS   0x10
 
-#define IFXGETH_PHY_DP83825I_WAIT_MDIO_READY() while (GETH_MAC_MDIO_ADDRESS.B.GB) {}
+#define IFXGETH_PHY_DP83825I_MDIO_TIMEOUT  (100000u)
+#define IFXGETH_PHY_DP83825I_RESET_TIMEOUT (10000u)
+#define IFXGETH_PHY_DP83825I_PHY_ID_INVALID_LOW  (0x0000u)
+#define IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH (0xFFFFu)
 
 /******************************************************************************/
 /*--------------------------------Enumerations--------------------------------*/
@@ -220,14 +223,149 @@ uint32 IfxGeth_Eth_Phy_Dp83825i_iPhyInitDone = 0;
 /******************************************************************************/
 /*-------------------------Function Prototypes--------------------------------*/
 /******************************************************************************/
+static uint32 IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready(void);
+static uint32 IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(uint32 layeraddr, uint32 regaddr, uint32 *pdata);
+static uint32 IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg_checked(uint32 layeraddr, uint32 regaddr, uint32 data);
+static uint32 IfxGeth_Eth_Phy_Dp83825i_read_phy_id(void);
+static uint32 IfxGeth_Eth_Phy_Dp83825i_soft_reset(void);
+static uint32 IfxGeth_Eth_Phy_Dp83825i_restart_autoneg(void);
 
 /******************************************************************************/
 /*-------------------------Function Implementations---------------------------*/
 /******************************************************************************/
+static uint32 IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready(void)
+{
+    uint32 timeout = IFXGETH_PHY_DP83825I_MDIO_TIMEOUT;
+
+    while (GETH_MAC_MDIO_ADDRESS.B.GB != 0u)
+    {
+        if (timeout == 0u)
+        {
+            return 0u;
+        }
+
+        timeout--;
+    }
+
+    return 1u;
+}
+
+static uint32 IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(uint32 layeraddr, uint32 regaddr, uint32 *pdata)
+{
+    if (pdata == 0)
+    {
+        return 0u;
+    }
+
+    if (IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready() == 0u)
+    {
+        *pdata = IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH;
+        return 0u;
+    }
+
+    GETH_MAC_MDIO_ADDRESS.U = (layeraddr << 21) | (regaddr << 16) | (0 << 8) | (3 << 2) | (1 << 0);
+
+    if (IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready() == 0u)
+    {
+        *pdata = IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH;
+        return 0u;
+    }
+
+    *pdata = GETH_MAC_MDIO_DATA.U & 0xFFFFu;
+
+    return 1u;
+}
+
+static uint32 IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg_checked(uint32 layeraddr, uint32 regaddr, uint32 data)
+{
+    if (IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready() == 0u)
+    {
+        return 0u;
+    }
+
+    GETH_MAC_MDIO_DATA.U = data;
+    GETH_MAC_MDIO_ADDRESS.U = (layeraddr << 21) | (regaddr << 16) | (0 << 8) |  (1 << 2) | (1 << 0);
+
+    return IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready();
+}
+
+static uint32 IfxGeth_Eth_Phy_Dp83825i_read_phy_id(void)
+{
+    uint32 phy_id1;
+    uint32 phy_id2;
+
+    if (IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_PHYIDR1, &phy_id1) == 0u)
+    {
+        Ethernet_Phy_Id1 = IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH;
+        Ethernet_Phy_Id2 = IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH;
+        Phy_IdRed = TRUE;
+        return 0u;
+    }
+
+    if (IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_PHYIDR2, &phy_id2) == 0u)
+    {
+        Ethernet_Phy_Id1 = phy_id1;
+        Ethernet_Phy_Id2 = IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH;
+        Phy_IdRed = TRUE;
+        return 0u;
+    }
+
+    Ethernet_Phy_Id1 = phy_id1;
+    Ethernet_Phy_Id2 = phy_id2;
+    Phy_IdRed = TRUE;
+
+    if ((phy_id1 == IFXGETH_PHY_DP83825I_PHY_ID_INVALID_LOW) ||
+        (phy_id1 == IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH) ||
+        (phy_id2 == IFXGETH_PHY_DP83825I_PHY_ID_INVALID_LOW) ||
+        (phy_id2 == IFXGETH_PHY_DP83825I_PHY_ID_INVALID_HIGH))
+    {
+        return 0u;
+    }
+
+    return 1u;
+}
+
+static uint32 IfxGeth_Eth_Phy_Dp83825i_soft_reset(void)
+{
+    uint32 value;
+    uint32 timeout;
+
+    if (IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_BMCR, 0x8000u) == 0u)
+    {
+        return 0u;
+    }
+
+    for (timeout = IFXGETH_PHY_DP83825I_RESET_TIMEOUT; timeout > 0u; timeout--)
+    {
+        if (IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_BMCR, &value) == 0u)
+        {
+            return 0u;
+        }
+
+        if ((value & 0x8000u) == 0u)
+        {
+            return 1u;
+        }
+    }
+
+    return 0u;
+}
+
+static uint32 IfxGeth_Eth_Phy_Dp83825i_restart_autoneg(void)
+{
+    return IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_BMCR, 0x1200u);
+}
+
 void IfxGet_Eth_Phy_Dp83825i_reset(void) {
 
     /* now we check the phy to know the board version */
-    IFXGETH_PHY_DP83825I_WAIT_MDIO_READY()
+    if (IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready() == 0u)
+    {
+        Ethernet_Phy_Id1 = 0u;
+        Ethernet_Phy_Id2 = 0u;
+        Phy_IdRed = TRUE;
+        return;
+    }
 
     // reset PHY
     // first we test to readout the reset bit to avoid timing issues (phy not yet ready)
@@ -236,7 +374,13 @@ void IfxGet_Eth_Phy_Dp83825i_reset(void) {
     do
     {
         GETH_MAC_MDIO_ADDRESS.U = (0 << 21) | (0 << 16) | (0 << 8) | (3 << 2) | (1 << 0);
-        IFXGETH_PHY_DP83825I_WAIT_MDIO_READY()
+        if (IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready() == 0u)
+        {
+            Ethernet_Phy_Id1 = 0u;
+            Ethernet_Phy_Id2 = 0u;
+            Phy_IdRed = TRUE;
+            return;
+        }
         value = GETH_MAC_MDIO_DATA.U;
     } while ((value & 0x8000) && (uiTimeout--));  // wait for reset to finish
 
@@ -245,22 +389,39 @@ void IfxGet_Eth_Phy_Dp83825i_reset(void) {
         // put data (reset the phy)
         GETH_MAC_MDIO_DATA.U = 0x8000;
         GETH_MAC_MDIO_ADDRESS.U = (0 << 21) | (0 << 16) | (0 << 8) |  (1 << 2) | (1 << 0);
-        IFXGETH_PHY_DP83825I_WAIT_MDIO_READY()
+        if (IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready() == 0u)
+        {
+            Ethernet_Phy_Id1 = 0u;
+            Ethernet_Phy_Id2 = 0u;
+            Phy_IdRed = TRUE;
+            return;
+        }
+
+        uiTimeout = 2000;
 
         do
         {
             GETH_MAC_MDIO_ADDRESS.U = (0 << 21) | (0 << 16) | (0 << 8) | (3 << 2) | (1 << 0);
-            IFXGETH_PHY_DP83825I_WAIT_MDIO_READY()
+            if (IfxGeth_Eth_Phy_Dp83825i_wait_mdio_ready() == 0u)
+            {
+                Ethernet_Phy_Id1 = 0u;
+                Ethernet_Phy_Id2 = 0u;
+                Phy_IdRed = TRUE;
+                return;
+            }
             value = GETH_MAC_MDIO_DATA.U;
-        } while (value & 0x8000);  // wait for reset to finish
+        } while ((value & 0x8000) && (uiTimeout--));  // wait for reset to finish
+
+        if (uiTimeout == 0xFFFFFFFFu)
+        {
+            Ethernet_Phy_Id1 = 0u;
+            Ethernet_Phy_Id2 = 0u;
+            Phy_IdRed = TRUE;
+            return;
+        }
 
         // get ID
-        GETH_MAC_MDIO_ADDRESS.U = (0 << 21) | (2 << 16) | (0 << 8) | (3 << 2) | (1 << 0);
-        IFXGETH_PHY_DP83825I_WAIT_MDIO_READY()
-        Ethernet_Phy_Id1 = GETH_MAC_MDIO_DATA.U;
-        GETH_MAC_MDIO_ADDRESS.U = (0 << 21) | (3 << 16) | (0 << 8) | (3 << 2) | (1 << 0);
-        IFXGETH_PHY_DP83825I_WAIT_MDIO_READY()
-        Ethernet_Phy_Id2 = GETH_MAC_MDIO_DATA.U;
+        (void)IfxGeth_Eth_Phy_Dp83825i_read_phy_id();
     }
     else
     {
@@ -271,24 +432,49 @@ void IfxGet_Eth_Phy_Dp83825i_reset(void) {
 
 uint32 IfxGeth_Eth_Phy_Dp83825i_init(void)
 {
-    IFXGETH_PHY_DP83825I_WAIT_MDIO_READY();
+    IfxGeth_Eth_Phy_Dp83825i_iPhyInitDone = 0u;
 
-    // reset PHY
-    IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg(0, IFXGETH_PHY_DP83825I_MDIO_BMCR, 0x8000);   // reset
-    uint32 value;
-
-    do
+    if (IfxGeth_Eth_Phy_Dp83825i_soft_reset() == 0u)
     {
-        IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg(0, IFXGETH_PHY_DP83825I_MDIO_BMCR, &value);
-    } while (value & 0x8000);                                                      // wait for reset to finish
+        return 0u;
+    }
 
-    /* Start Phy activity */
-    IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg(0, IFXGETH_PHY_DP83825I_MDIO_BMCR, 0x1200);    // enable auto-negotiation, restart auto-negotiation
+    if (IfxGeth_Eth_Phy_Dp83825i_read_phy_id() == 0u)
+    {
+        return 0u;
+    }
+
+    if (IfxGeth_Eth_Phy_Dp83825i_restart_autoneg() == 0u)
+    {
+        return 0u;
+    }
 
     // done
     IfxGeth_Eth_Phy_Dp83825i_iPhyInitDone = 1;
 
     return 1;
+}
+
+uint32 IfxGeth_Eth_Phy_Dp83825i_recover(void)
+{
+    if (IfxGeth_Eth_Phy_Dp83825i_read_phy_id() == 0u)
+    {
+        return 0u;
+    }
+
+    if (IfxGeth_Eth_Phy_Dp83825i_soft_reset() == 0u)
+    {
+        return 0u;
+    }
+
+    if (IfxGeth_Eth_Phy_Dp83825i_restart_autoneg() == 0u)
+    {
+        return 0u;
+    }
+
+    IfxGeth_Eth_Phy_Dp83825i_iPhyInitDone = 1u;
+
+    return 1u;
 }
 
 
@@ -302,10 +488,24 @@ uint32 IfxGeth_Eth_Phy_Dp83825i_link_status(void)
     if (IfxGeth_Eth_Phy_Dp83825i_iPhyInitDone)
     {
         // We read the phy status register
-        IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg(0, IFXGETH_PHY_DP83825I_MDIO_PHYSTS, &value);
+        if (IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_PHYSTS, &value) == 0u)
+        {
+            return link_status.U;
+        }
+
         if (!(value & 0x2)) link_status.B.LNKSPEED = 1;
         if (value & 0x4) link_status.B.LNKMOD = 1;
-        IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg(0, IFXGETH_PHY_DP83825I_MDIO_BMSR, &value);
+
+        if (IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_BMSR, &value) == 0u)
+        {
+            return link_status.U;
+        }
+
+        if (IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(0, IFXGETH_PHY_DP83825I_MDIO_BMSR, &value) == 0u)
+        {
+            return link_status.U;
+        }
+
         if (value & 0x4) link_status.B.LNKSTS = 1;
     }
 
@@ -314,25 +514,13 @@ uint32 IfxGeth_Eth_Phy_Dp83825i_link_status(void)
 
 void IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg(uint32 layeraddr, uint32 regaddr, uint32 *pdata)
 {
-    // 5bit Physical Layer Adddress, 5bit GMII Regnr, 4bit csrclock divider, Read, Busy
-	GETH_MAC_MDIO_ADDRESS.U = (layeraddr << 21) | (regaddr << 16) | (0 << 8) | (3 << 2) | (1 << 0);
-
-	IFXGETH_PHY_DP83825I_WAIT_MDIO_READY();
-
-    // get data
-    *pdata = GETH_MAC_MDIO_DATA.U;
+    (void)IfxGeth_Eth_Phy_Dp83825i_read_mdio_reg_checked(layeraddr, regaddr, pdata);
 }
 
 
 void IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg(uint32 layeraddr, uint32 regaddr, uint32 data)
 {
-    // put data
-	GETH_MAC_MDIO_DATA.U = data;
-
-    // 5bit Physical Layer Adddress, 5bit GMII Regnr, 4bit csrclock divider, Write, Busy
-    GETH_MAC_MDIO_ADDRESS.U = (layeraddr << 21) | (regaddr << 16) | (0 << 8) |  (1 << 2) | (1 << 0);
-
-    IFXGETH_PHY_DP83825I_WAIT_MDIO_READY();
+    (void)IfxGeth_Eth_Phy_Dp83825i_write_mdio_reg_checked(layeraddr, regaddr, data);
 }
 
 #if defined(__GNUC__)
