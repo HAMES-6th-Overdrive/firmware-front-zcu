@@ -66,7 +66,8 @@
 IFX_ALIGN(4) IfxCpu_syncEvent g_cpuSyncEvent = 0;
 
 #define LED_500MS_PIN (&IfxPort_P00_6)
-#define APP_FRONTZCU_VERSION "1.0.0"
+#define APP_FRONTZCU_VERSION "1.0.1"
+//#define SLOW
 
 #define SENSOR_OTA_DOIP_INIT_DELAY_MS      5000U
 #define SENSOR_OTA_DOIP_TASK_STACK_SIZE    (configMINIMAL_STACK_SIZE)
@@ -236,8 +237,11 @@ static void task_app_led_500ms(void *arg)
     while (1)
     {
         IfxPort_togglePin(LED_500MS_PIN->port, LED_500MS_PIN->pinIndex);
+        #ifdef SLOW
         vTaskDelay(pdMS_TO_TICKS(500U));
-        // vTaskDelay(pdMS_TO_TICKS(50U));
+        #else
+        vTaskDelay(pdMS_TO_TICKS(50U));
+        #endif
     }
 }
 
