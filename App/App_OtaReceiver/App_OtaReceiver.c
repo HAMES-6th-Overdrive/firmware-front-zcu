@@ -125,7 +125,7 @@ volatile uint8_t  g_appOtaReceiverSelfTestLastBlockLength = 0U;
 
 
 /*
- * 테스트용 32-byte block.
+ * 테스트용 stream block.
  *
  * SelfTest가 꺼져 있을 때 warning을 피하기 위해 #if로 감싼다.
  */
