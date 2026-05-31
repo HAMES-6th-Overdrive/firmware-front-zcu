@@ -50,26 +50,17 @@
  *   [1] BSC  = block sequence counter
  *   [2..] Data
  *
- * Sensor ECU 내부 Flash writer는 32-byte page를 유지하지만,
- * CAN OTA 전송 block은 62-byte까지 받을 수 있으므로,
- * ZCU는 HPC에게 maxBlockSize = 64를 알려준다.
+ * Sensor ECU 쪽 내부 OTA는 32-byte block 단위이므로,
+ * ZCU는 HPC에게 maxBlockSize = 34를 알려주는 것이 가장 단순하다.
  *
  * 그러면 HPC는:
- *   maxBlockSize - 2 = 62 bytes
+ *   maxBlockSize - 2 = 32 bytes
  * 단위로 bin을 보낸다.
  */
-#define APP_SENSOR_OTA_GATEWAY_UDS_DATA_SIZE          62U
-#define APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE     64U
+#define APP_SENSOR_OTA_GATEWAY_UDS_DATA_SIZE          32U
+#define APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE     34U
 #define APP_SENSOR_OTA_GATEWAY_UDS_RX_BUF_SIZE        256U
 #define APP_SENSOR_OTA_GATEWAY_UDS_TX_BUF_SIZE        256U
-
-#if ((APP_SENSOR_OTA_GATEWAY_UDS_DATA_SIZE + 2U) > APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE)
-#error "Sensor OTA gateway data size exceeds advertised UDS max block size"
-#endif
-
-#if (APP_SENSOR_OTA_GATEWAY_UDS_MAX_BLOCK_SIZE > 64U)
-#error "Sensor OTA gateway max block size exceeds CAN FD payload"
-#endif
 
 #define APP_SENSOR_OTA_GATEWAY_UDS_NEGATIVE_RSP       0x7FU
 

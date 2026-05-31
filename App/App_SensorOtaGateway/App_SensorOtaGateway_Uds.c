@@ -557,8 +557,8 @@ static uint16 handleRequestDownload(uint8 *rx, uint16 rxLen, uint8 *tx)
      * Positive response:
      *   0x74 0x20 maxBlockSizeHi maxBlockSizeLo
      *
-     * 여기서 maxBlockSize = 64로 응답한다.
-     * 그러면 HPC는 data payload를 64 - 2 = 62 bytes 단위로 보낸다.
+     * 여기서 maxBlockSize = 34로 응답한다.
+     * 그러면 HPC는 data payload를 34 - 2 = 32 bytes 단위로 보낸다.
      */
     tx[0] = APP_SENSOR_OTA_GATEWAY_UDS_SID_REQUEST_DOWNLOAD +
             APP_SENSOR_OTA_GATEWAY_UDS_POS_RESPONSE_OFFSET;

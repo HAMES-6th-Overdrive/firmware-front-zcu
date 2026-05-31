@@ -222,7 +222,7 @@ volatile uint32_t g_appOtaDebugCancelDoneCount = 0U;
 volatile BaseType_t g_appOtaDebugCancelResult  = pdFAIL;
 
 /*
- * 테스트용 stream block.
+ * 테스트용 32-byte block.
  * ZCU는 전체 bin을 저장하지 않고, 이 block 하나만 queue에 복사해서 넘긴다.
  */
 static uint8_t g_appOtaDebugBlockData[UDS_OTA_CLIENT_TRANSFER_DATA_SIZE] =

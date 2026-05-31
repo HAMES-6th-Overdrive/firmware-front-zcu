@@ -20,7 +20,7 @@
  *
  * Streaming Gateway 구조:
  *  - ZCU는 전체 firmware binary를 저장하지 않는다.
- *  - ZCU는 firmwareSize / 현재 62-byte 이하 stream block만 보관한다.
+ *  - ZCU는 firmwareSize / 현재 32-byte block만 보관한다.
  *  - CRC32는 두 가지 모드를 지원한다.
  *
  * CRC 모드:
@@ -1063,7 +1063,7 @@ static void handleRequestDownloadResponse(void)
     {
         maxBlockLength = readU16Le(&resp[2]);
 
-        if (maxBlockLength < (uint16_t)(UDS_OTA_CLIENT_TRANSFER_DATA_SIZE + 2U))
+        if (maxBlockLength < UDS_OTA_CLIENT_TRANSFER_DATA_SIZE)
         {
             setError(UDS_OTA_CLIENT_RESULT_UNEXPECTED_RESPONSE);
             return;

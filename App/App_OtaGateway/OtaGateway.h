@@ -7,7 +7,7 @@
  *
  * 역할:
  *  - Pi/HPC 계층에서 받은 OTA_START / OTA_BLOCK 요청을 UdsOtaClient streaming API로 연결한다.
- *  - ZCU는 전체 firmware binary를 저장하지 않고, 현재 필요한 62-byte 이하 block만 Sensor ECU로 전달한다.
+ *  - ZCU는 전체 firmware binary를 저장하지 않고, 현재 필요한 32-byte block만 Sensor ECU로 전달한다.
  *
  * 현재 단계:
  *  - Store 구매 후 bin download
@@ -201,7 +201,7 @@ OtaGateway_Result_t OtaGateway_SetFinalCrc(uint32_t firmwareCrc32);
  *
  * @param blockIndex 제공할 block index
  * @param data       block data pointer
- * @param length     block length. 보통 62 bytes, 마지막 block은 62보다 작을 수 있음
+ * @param length     block length. 보통 32 bytes, 마지막 block은 32보다 작을 수 있음
  *
  * @return OTA_GATEWAY_RESULT_OK if accepted
  */
