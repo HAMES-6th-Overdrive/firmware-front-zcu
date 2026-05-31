@@ -13,7 +13,7 @@
  * 현재 단계:
  *  - Download/Verify phase 담당
  *  - ZCU는 전체 firmware binary를 저장하지 않는다.
- *  - OTA_BLOCK에서는 현재 요청된 32-byte block만 받는다.
+ *  - OTA_BLOCK에서는 현재 요청된 62-byte 이하 block만 받는다.
  *  - SOTA/UCB_SWAP activation은 아직 수행하지 않는다.
  *
  * CRC 모드:
@@ -117,7 +117,7 @@ BaseType_t AppOtaGateway_SetFinalCrc(uint32_t firmwareCrc32,
  *
  * @param blockIndex 제공할 block index
  * @param data       block data pointer
- * @param length     block length. 보통 32 bytes, 마지막 block은 32보다 작을 수 있음
+ * @param length     block length. 보통 62 bytes, 마지막 block은 62보다 작을 수 있음
  * @param waitTicks  queue send 대기 tick
  *
  * @return pdPASS / pdFAIL

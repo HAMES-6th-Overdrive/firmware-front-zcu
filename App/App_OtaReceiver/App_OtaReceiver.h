@@ -104,7 +104,7 @@ BaseType_t AppOtaReceiver_SetFinalCrc(uint32_t firmwareCrc32,
  *
  * @param blockIndex 제공할 block index
  * @param data       block data pointer
- * @param length     block length. 보통 32 bytes, 마지막 block은 32보다 작을 수 있음
+ * @param length     block length. 보통 62 bytes, 마지막 block은 62보다 작을 수 있음
  * @param waitTicks  queue send 대기 tick
  *
  * @return pdPASS / pdFAIL
